@@ -113,7 +113,7 @@ export const getEmployeeById = async (req, res) => {
 // UPDATE (partial-safe)
 export const updateEmployee = async (req, res) => {
   const { empid } = req.params;
-  const profileFields = ["empid", "name", "email", "role", "role_type", "otherRole", "cluster", "location"];
+  const profileFields = ["empid", "name", "email", "role", "cluster", "location"];
   const detailScalarFields = ["current_project", "availability", "hours_available", "from_date", "to_date"];
   try {
     // fetch existing
@@ -129,13 +129,16 @@ export const updateEmployee = async (req, res) => {
     const body = req.body || {};
     const updatePayload = {};
 
+    // DEBUG: ISOLATION - Only update name
+    // if (body.name) updatePayload.name = body.name;
+
     // PROFILE fields
     profileFields.forEach((f) => {
       if (Object.prototype.hasOwnProperty.call(body, f)) {
         if (body[f] === undefined) return;
         updatePayload[f] = body[f];
         // map otherRole to role_type as well for compatibility
-        if (f === "otherRole") updatePayload["role_type"] = body[f];
+        // if (f === "otherRole") updatePayload["role_type"] = body[f];
       }
     });
 
@@ -176,15 +179,22 @@ export const updateEmployee = async (req, res) => {
     const fromProvided = updatePayload.from_date !== undefined ? updatePayload.from_date : existing.from_date;
     const toProvided = updatePayload.to_date !== undefined ? updatePayload.to_date : existing.to_date;
 
-    if (finalAvailability !== "Partially Available" && (hoursProvided || fromProvided || toProvided)) {
-      return res.status(400).json({ error: 'Hours and dates should only be set for "Partially Available"' });
-    }
-    if (finalAvailability === "Partially Available" && (!hoursProvided || !fromProvided || !toProvided)) {
-      return res.status(400).json({ error: 'Hours, from date, and to date are required for "Partially Available"' });
+    if (finalAvailability !== "Partially Available") {
+      // Auto-cleanup: if not partial, these must be null
+      if (hoursProvided || fromProvided || toProvided) {
+        updatePayload.hours_available = null;
+        updatePayload.from_date = null;
+        updatePayload.to_date = null;
+      }
+    } else {
+      // If Partial, ensure we have values (either in update or existing)
+      if (!hoursProvided || !fromProvided || !toProvided) {
+        return res.status(400).json({ error: 'Hours, from date, and to date are required for "Partially Available"' });
+      }
     }
 
     // set updated_at
-    updatePayload.updated_at = new Date().toISOString();
+    // updated_at: new Date().toISOString(), // Commented out to debug 500 error (column might be missing)
 
     // perform update
     const { data: updatedData, error: updateError } = await supabase
@@ -206,6 +216,6 @@ export const updateEmployee = async (req, res) => {
     res.json({ success: true, message: "Employee updated", data: updatedRow || null });
   } catch (err) {
     console.error("Update employee error →", err);
-    res.status(500).json({ error: "Supabase update error" });
+    res.status(500).json({ error: "Supabase update error", details: err.message || err });
   }
 };

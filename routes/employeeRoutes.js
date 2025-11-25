@@ -6,5 +6,6 @@ const router = express.Router();
 router.get('/', getAllEmployees);
 router.get('/:empid', getEmployeeById);
 router.put('/:empid', updateEmployee);
+router.patch('/:empid', updateEmployee);
 
 export default router; // ✅ ES Module export

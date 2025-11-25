@@ -3,7 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import employeeRoutes from './routes/employeeRoutes.js';
 import authRoutes from './routes/authRoutes.js';
-import sheetDB from "./db/connection.js";
+// import sheetDB from "./db/connection.js";
 
 dotenv.config();
 
@@ -17,7 +17,7 @@ app.use(cors({
         'http://localhost:5000',
         'http://localhost:3000'
     ],
-    methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     credentials: true
 }));
 
