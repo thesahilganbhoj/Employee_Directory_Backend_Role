@@ -1,4 +1,4 @@
-import sheetDB from "../db/connection.js";
+import supabase from "../db/supabaseClient.js";
 
 // ---------------------------
 // LOGIN USER
@@ -10,10 +10,13 @@ export const loginUser = async (req, res) => {
     return res.status(400).json({ error: "Email and password required" });
 
   try {
-    // SheetDB search filter
-    const { data: users } = await sheetDB.get("/search", {
-      params: { email }
-    });
+    // Supabase search filter
+    const { data: users, error } = await supabase
+      .from('employees')
+      .select('*')
+      .eq('email', email);
+
+    if (error) throw error;
 
     if (!users || users.length === 0)
       return res.status(401).json({ error: "Invalid credentials" });
@@ -34,7 +37,7 @@ export const loginUser = async (req, res) => {
 
   } catch (err) {
     console.error("Login error →", err);
-    res.status(500).json({ error: "SheetDB login error" });
+    res.status(500).json({ error: "Supabase login error" });
   }
 };
 
@@ -48,18 +51,22 @@ export const signupUser = async (req, res) => {
     return res.status(400).json({ error: "All fields required" });
 
   try {
-    const { data: existing } = await sheetDB.get("/search", {
-      params: { email }
-    });
+    const { data: existing, error: findError } = await supabase
+      .from('employees')
+      .select('*')
+      .eq('email', email);
+
+    if (findError) throw findError;
 
     if (existing.length > 0)
       return res.status(409).json({ error: "Email already registered" });
 
     const empid = `E${String(Date.now()).slice(-6)}`;
 
-    // SheetDB MUST receive "data" array
-    await sheetDB.post("/", {
-      data: [
+    // Supabase insert
+    const { error: insertError } = await supabase
+      .from('employees')
+      .insert([
         {
           empid,
           name,
@@ -74,12 +81,13 @@ export const signupUser = async (req, res) => {
           previous_projects: "[]",
           role: "Employee",
         }
-      ]
-    });
+      ]);
+
+    if (insertError) throw insertError;
 
     res.json({ success: true, message: "Account created successfully" });
   } catch (err) {
     console.error("Signup error →", err);
-    res.status(500).json({ error: "SheetDB signup error" });
+    res.status(500).json({ error: "Supabase signup error" });
   }
 };

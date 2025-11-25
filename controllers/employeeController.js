@@ -1,5 +1,5 @@
 // Backend/controllers/employeeController.js
-import sheetDB from "../db/connection.js";
+import supabase from "../db/supabaseClient.js";
 
 /**
  * Utilities
@@ -23,7 +23,7 @@ const safeJsonParse = (value) => {
     try {
       const parsed = JSON.parse(s);
       if (Array.isArray(parsed)) return parsed.filter(Boolean);
-    } catch {}
+    } catch { }
     // split by newline or comma
     return s.split(/\r?\n|,/).map((x) => x.trim()).filter(Boolean);
   }
@@ -41,7 +41,7 @@ const normalizeListForStore = (val) => {
     try {
       const parsed = JSON.parse(s);
       if (Array.isArray(parsed)) return JSON.stringify(parsed.filter(Boolean));
-    } catch {}
+    } catch { }
     // split by newline/comma
     const arr = s.split(/\r?\n|,/).map((x) => x.trim()).filter(Boolean);
     return JSON.stringify(arr);
@@ -58,8 +58,11 @@ const normalizeListForStore = (val) => {
 export const getAllEmployees = async (req, res) => {
   const { search = "", availability = "" } = req.query;
   try {
-    const { data: employees = [] } = await sheetDB.get("/");
-    const filtered = employees
+    const { data: employees, error } = await supabase.from('employees').select('*');
+
+    if (error) throw error;
+
+    const filtered = (employees || [])
       .filter((emp) => {
         const name = (emp.name || "").toString().toLowerCase();
         const skills = (emp.current_skills || "").toString().toLowerCase();
@@ -80,7 +83,7 @@ export const getAllEmployees = async (req, res) => {
     res.json(filtered);
   } catch (err) {
     console.error("Fetch employees error →", err);
-    res.status(500).json({ error: "SheetDB fetch error" });
+    res.status(500).json({ error: "Supabase fetch error" });
   }
 };
 
@@ -88,7 +91,13 @@ export const getAllEmployees = async (req, res) => {
 export const getEmployeeById = async (req, res) => {
   const { empid } = req.params;
   try {
-    const { data } = await sheetDB.get("/search", { params: { empid } });
+    const { data, error } = await supabase
+      .from('employees')
+      .select('*')
+      .eq('empid', empid);
+
+    if (error) throw error;
+
     if (!data || data.length === 0) return res.status(404).json({ error: "Employee not found" });
     const emp = data[0];
     emp.current_skills = safeJsonParse(emp.current_skills);
@@ -97,7 +106,7 @@ export const getEmployeeById = async (req, res) => {
     res.json(emp);
   } catch (err) {
     console.error("Fetch employee error →", err);
-    res.status(500).json({ error: "SheetDB fetch error" });
+    res.status(500).json({ error: "Supabase fetch error" });
   }
 };
 
@@ -108,7 +117,12 @@ export const updateEmployee = async (req, res) => {
   const detailScalarFields = ["current_project", "availability", "hours_available", "from_date", "to_date"];
   try {
     // fetch existing
-    const { data: findData } = await sheetDB.get("/search", { params: { empid } });
+    const { data: findData, error: findError } = await supabase
+      .from('employees')
+      .select('*')
+      .eq('empid', empid);
+
+    if (findError) throw findError;
     if (!findData || findData.length === 0) return res.status(404).json({ error: "Employee not found" });
     const existing = findData[0];
 
@@ -172,12 +186,17 @@ export const updateEmployee = async (req, res) => {
     // set updated_at
     updatePayload.updated_at = new Date().toISOString();
 
-    // perform update (SheetDB put by empid). Only provided keys are sent.
-    await sheetDB.put(`/empid/${empid}`, { data: [updatePayload] });
+    // perform update
+    const { data: updatedData, error: updateError } = await supabase
+      .from('employees')
+      .update(updatePayload)
+      .eq('empid', empid)
+      .select();
+
+    if (updateError) throw updateError;
 
     // return refreshed row
-    const { data: refreshed } = await sheetDB.get("/search", { params: { empid } });
-    const updatedRow = refreshed && refreshed.length > 0 ? refreshed[0] : null;
+    const updatedRow = updatedData && updatedData.length > 0 ? updatedData[0] : null;
     if (updatedRow) {
       updatedRow.current_skills = safeJsonParse(updatedRow.current_skills);
       updatedRow.interests = safeJsonParse(updatedRow.interests);
@@ -187,6 +206,6 @@ export const updateEmployee = async (req, res) => {
     res.json({ success: true, message: "Employee updated", data: updatedRow || null });
   } catch (err) {
     console.error("Update employee error →", err);
-    res.status(500).json({ error: "SheetDB update error" });
+    res.status(500).json({ error: "Supabase update error" });
   }
 };
